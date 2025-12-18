@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { AppState, Match, GameMode } from '../types';
-import { Plus, Minus, Crown, Zap, RefreshCw, Play, XCircle } from 'lucide-react';
+import { Plus, Minus, Crown, Zap, RefreshCw, Play, XCircle, AlertTriangle } from 'lucide-react';
 
 interface Props {
   state: AppState;
@@ -57,12 +57,24 @@ const GameView: React.FC<Props> = ({ state, updateScore, finishMatch, startMatch
             <Crown /> MODO DUPLAS (2x2)
           </button>
         </div>
+
+        <div className="mt-8 p-4 bg-zinc-900 rounded-xl border border-zinc-800 max-w-xs text-[10px] text-zinc-500 space-y-2 text-left">
+            <div className="flex items-center gap-2 text-[#4ade80] font-bold">
+                <AlertTriangle size={12} /> REGRAS DA MESA
+            </div>
+            <p>• 5-0 é vitória imediata (Pneu).</p>
+            <p>• Desempate: Precisa de 2 pontos seguidos.</p>
+            <p>• 1-1 no desempate volta pro zero.</p>
+        </div>
       </div>
     );
   }
 
   const pA = activeMatch.sideA.map(id => players[id]);
   const pB = activeMatch.sideB.map(id => players[id]);
+
+  const isPneuA = activeMatch.winner === 'A' && activeMatch.scoreA === 5 && activeMatch.scoreB === 0;
+  const isPneuB = activeMatch.winner === 'B' && activeMatch.scoreB === 5 && activeMatch.scoreA === 0;
 
   if (showIntro) {
     return (
@@ -87,7 +99,7 @@ const GameView: React.FC<Props> = ({ state, updateScore, finishMatch, startMatch
   return (
     <div className="fixed inset-0 flex flex-col bg-[#0a0a0a] overflow-hidden">
       
-      {/* HUD SUPERIOR - CONTROL BAR (REDUZIDO) */}
+      {/* HUD SUPERIOR - CONTROL BAR */}
       <div className="absolute top-0 left-0 right-0 z-50 flex items-center justify-between p-3 bg-gradient-to-b from-black/95 via-black/40 to-transparent">
           <button 
             onClick={resetMatch}
@@ -102,13 +114,13 @@ const GameView: React.FC<Props> = ({ state, updateScore, finishMatch, startMatch
                     onClick={finishMatch}
                     className="bg-[#4ade80] text-black px-5 py-2 rounded-full font-arcade text-[10px] shadow-[0_0_15px_rgba(74,222,128,0.4)] flex items-center gap-2 animate-king"
                   >
-                    CONFIRMAR <Play size={10} fill="currentColor" />
+                    CONFIRMAR VITÓRIA <Play size={10} fill="currentColor" />
                   </button>
               ) : (
                   <div className="bg-zinc-900/80 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span>
+                      <span className={`w-1.5 h-1.5 rounded-full ${activeMatch.isDeuce ? 'bg-orange-500' : 'bg-red-500'} animate-pulse`}></span>
                       <span className="font-arcade text-[8px] text-zinc-400 tracking-widest uppercase">
-                          {activeMatch.mode} • BATALHA
+                          {activeMatch.isDeuce ? 'DESEMPATE CRÍTICO' : `${activeMatch.mode} • BATALHA`}
                       </span>
                   </div>
               )}
@@ -129,7 +141,7 @@ const GameView: React.FC<Props> = ({ state, updateScore, finishMatch, startMatch
 
       {/* ÁREA PRINCIPAL DO COMBATE */}
       <div className="relative flex-1 flex h-full">
-        {/* Vertical Net */}
+        {/* Net */}
         <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-[1px] bg-white/5 z-0 flex flex-col justify-around py-20 opacity-30">
              {[...Array(30)].map((_, i) => (
                  <div key={i} className="w-0.5 h-0.5 bg-white/40 rounded-full"></div>
@@ -138,7 +150,6 @@ const GameView: React.FC<Props> = ({ state, updateScore, finishMatch, startMatch
 
         {/* LADO A (ESQUERDA) */}
         <div className={`flex-1 flex flex-col items-center justify-between transition-all duration-500 relative z-10 ${activeMatch.winner === 'A' ? 'bg-[#4ade801a]' : 'bg-transparent'}`}>
-            {/* Info Topo */}
             <div className="pt-16 flex flex-col items-center space-y-1">
                 <div className="relative">
                     {pA[0].stats.consecutiveWins > 0 && (
@@ -153,22 +164,22 @@ const GameView: React.FC<Props> = ({ state, updateScore, finishMatch, startMatch
                 </h3>
             </div>
             
-            {/* Placar Gigante (VH based para nunca estourar) */}
             <div className={`font-arcade text-[22vh] leading-none transition-all select-none pointer-events-none ${activeMatch.winner === 'A' ? 'text-[#4ade80] scale-110 drop-shadow-[0_0_20px_rgba(74,222,128,0.4)]' : 'text-zinc-100 opacity-90'}`}>
                 {activeMatch.scoreA}
             </div>
 
-            {/* Controles Otimizados */}
             <div className="w-full flex flex-col p-4 pb-6 space-y-3">
                 <button 
                   onClick={() => updateScore('A', 1)} 
-                  className="w-full h-32 bg-[#4ade80] text-black rounded-[2rem] shadow-xl flex items-center justify-center active:scale-95 transition-transform group"
+                  disabled={!!activeMatch.winner}
+                  className="w-full h-32 bg-[#4ade80] text-black rounded-[2rem] shadow-xl flex items-center justify-center active:scale-95 transition-transform group disabled:opacity-50"
                 >
                     <Plus size={50} className="group-active:scale-125 transition-transform" />
                 </button>
                 <button 
                   onClick={() => updateScore('A', -1)} 
-                  className="w-full py-3 bg-zinc-900/60 backdrop-blur text-zinc-700 rounded-2xl border border-zinc-800 flex items-center justify-center active:scale-95"
+                  disabled={!!activeMatch.winner}
+                  className="w-full py-3 bg-zinc-900/60 backdrop-blur text-zinc-700 rounded-2xl border border-zinc-800 flex items-center justify-center active:scale-95 disabled:opacity-50"
                 >
                     <Minus size={20} />
                 </button>
@@ -177,7 +188,6 @@ const GameView: React.FC<Props> = ({ state, updateScore, finishMatch, startMatch
 
         {/* LADO B (DIREITA) */}
         <div className={`flex-1 flex flex-col items-center justify-between transition-all duration-500 relative z-10 ${activeMatch.winner === 'B' ? 'bg-[#4ade801a]' : 'bg-transparent'}`}>
-            {/* Info Topo */}
             <div className="pt-16 flex flex-col items-center space-y-1">
                 <div className="relative">
                     {pB[0].stats.consecutiveWins > 0 && (
@@ -192,22 +202,22 @@ const GameView: React.FC<Props> = ({ state, updateScore, finishMatch, startMatch
                 </h3>
             </div>
 
-            {/* Placar Gigante */}
             <div className={`font-arcade text-[22vh] leading-none transition-all select-none pointer-events-none ${activeMatch.winner === 'B' ? 'text-[#4ade80] scale-110 drop-shadow-[0_0_20px_rgba(74,222,128,0.4)]' : 'text-zinc-100 opacity-90'}`}>
                 {activeMatch.scoreB}
             </div>
 
-            {/* Controles Otimizados */}
             <div className="w-full flex flex-col p-4 pb-6 space-y-3">
                 <button 
                   onClick={() => updateScore('B', 1)} 
-                  className="w-full h-32 bg-[#4ade80] text-black rounded-[2rem] shadow-xl flex items-center justify-center active:scale-95 transition-transform group"
+                  disabled={!!activeMatch.winner}
+                  className="w-full h-32 bg-[#4ade80] text-black rounded-[2rem] shadow-xl flex items-center justify-center active:scale-95 transition-transform group disabled:opacity-50"
                 >
                     <Plus size={50} className="group-active:scale-125 transition-transform" />
                 </button>
                 <button 
                   onClick={() => updateScore('B', -1)} 
-                  className="w-full py-3 bg-zinc-900/60 backdrop-blur text-zinc-700 rounded-2xl border border-zinc-800 flex items-center justify-center active:scale-95"
+                  disabled={!!activeMatch.winner}
+                  className="w-full py-3 bg-zinc-900/60 backdrop-blur text-zinc-700 rounded-2xl border border-zinc-800 flex items-center justify-center active:scale-95 disabled:opacity-50"
                 >
                     <Minus size={20} />
                 </button>
@@ -215,14 +225,24 @@ const GameView: React.FC<Props> = ({ state, updateScore, finishMatch, startMatch
         </div>
       </div>
 
-      {/* Overlays e Streaks (Reduzidos para não poluir) */}
-      {activeMatch.isDeuce && (
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 bg-red-600 text-white font-arcade px-6 py-3 rounded-full shadow-[0_0_30px_rgba(220,38,38,0.7)] rotate-[-2deg] animate-bounce text-xs">
-              🔥 OVERTIME
+      {/* OVERLAYS DE EVENTOS ESPECIAIS */}
+      {activeMatch.isDeuce && !activeMatch.winner && (
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 bg-orange-600 text-white font-arcade px-6 py-3 rounded-full shadow-[0_0_30px_rgba(249,115,22,0.7)] rotate-[-2deg] animate-bounce text-xs flex flex-col items-center">
+              <span>🔥 OVERTIME</span>
+              <span className="text-[8px] opacity-80 mt-1">GANHE 2 SEGUIDAS</span>
           </div>
       )}
 
-      {/* Side Streaks (Bolinhas compactas) */}
+      {(isPneuA || isPneuB) && (
+          <div className="absolute inset-0 z-40 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center pointer-events-none animate-in fade-in duration-300">
+              <div className="bg-red-600 text-white font-arcade text-6xl px-12 py-6 rounded-3xl shadow-[0_0_50px_rgba(220,38,38,0.8)] rotate-[-10deg] animate-king">
+                  PNEU!
+              </div>
+              <div className="font-arcade text-white text-xl mt-6 uppercase tracking-tighter">Vitória Humilhante</div>
+          </div>
+      )}
+
+      {/* Side Streaks */}
       <div className="absolute top-48 w-full flex justify-between px-2 pointer-events-none">
           <div className="flex flex-col gap-1">
              {pA[0].stats.consecutiveWins > 0 && [...Array(Math.min(pA[0].stats.consecutiveWins, 5))].map((_, i) => (

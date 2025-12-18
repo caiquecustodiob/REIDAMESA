@@ -108,7 +108,6 @@ const AppContent: React.FC = () => {
   const updateScore = (side: 'A' | 'B', amount: number) => {
     if (!state.activeMatch) return;
 
-    // Tocar som de ponto/erro
     if (amount > 0) playArcadeSound('point');
     else playArcadeSound('remove');
 
@@ -116,39 +115,51 @@ const AppContent: React.FC = () => {
       if (!prev.activeMatch) return prev;
       const match = { ...prev.activeMatch };
       const limit = match.mode === 'SOLO' ? 7 : 10;
+      const deuceTrigger = match.mode === 'SOLO' ? 6 : 9;
       
-      const oldScoreA = match.scoreA;
-      const oldScoreB = match.scoreB;
       const oldWinner = match.winner;
-      const oldDeuce = match.isDeuce;
 
       if (side === 'A') match.scoreA = Math.max(0, match.scoreA + amount);
       if (side === 'B') match.scoreB = Math.max(0, match.scoreB + amount);
 
-      // Lógica de Deuce (Empate técnico)
-      if (match.mode === 'SOLO' && match.scoreA === 6 && match.scoreB === 6 && !match.isDeuce) {
-        match.isDeuce = true;
-        match.scoreA = 0;
-        match.scoreB = 0;
-        playArcadeSound('deuce');
-      }
-      if (match.mode === 'DUPLAS' && match.scoreA === 9 && match.scoreB === 9 && !match.isDeuce) {
-        match.isDeuce = true;
-        match.scoreA = 0;
-        match.scoreB = 0;
-        playArcadeSound('deuce');
+      // --- LÓGICA DE JOGO NORMAL ---
+      if (!match.isDeuce) {
+        // Regra do Pneu (5-0 ou 0-5)
+        if (match.scoreA === 5 && match.scoreB === 0) {
+            match.winner = 'A';
+        } else if (match.scoreB === 5 && match.scoreA === 0) {
+            match.winner = 'B';
+        }
+        // Vitória Normal
+        else if (match.scoreA >= limit) {
+            match.winner = 'A';
+        } else if (match.scoreB >= limit) {
+            match.winner = 'B';
+        }
+        // Gatilho de Desempate (Deuce)
+        else if (match.scoreA === deuceTrigger && match.scoreB === deuceTrigger) {
+            match.isDeuce = true;
+            match.scoreA = 0;
+            match.scoreB = 0;
+            playArcadeSound('deuce');
+        }
+      } 
+      // --- LÓGICA DE DESEMPATE (DEUCE) ---
+      else {
+        // Regra do Reset em 1-1
+        if (match.scoreA === 1 && match.scoreB === 1) {
+            match.scoreA = 0;
+            match.scoreB = 0;
+            playArcadeSound('remove'); // Som de frustração/reset
+        } 
+        // Vitória por 2 pontos de diferença (2-0 ou 0-2)
+        else if (match.scoreA >= 2) {
+            match.winner = 'A';
+        } else if (match.scoreB >= 2) {
+            match.winner = 'B';
+        }
       }
 
-      // Verificação de vencedor
-      if (match.isDeuce) {
-        if (match.scoreA >= 2 && match.scoreA - match.scoreB >= 2) match.winner = 'A';
-        if (match.scoreB >= 2 && match.scoreB - match.scoreA >= 2) match.winner = 'B';
-      } else {
-        if (match.scoreA >= limit) match.winner = 'A';
-        if (match.scoreB >= limit) match.winner = 'B';
-      }
-
-      // Se acabou de declarar um vencedor, toca som de vitória
       if (match.winner && !oldWinner) {
         playArcadeSound('victory');
       }

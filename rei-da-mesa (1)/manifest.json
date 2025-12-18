@@ -1,9 +1,10 @@
 
 {
   "name": "REI DA MESA",
-  "short_name": "ReiDaMesa",
+  "short_name": "REI DA MESA",
   "description": "Organizador Arcade de Ping Pong",
-  "start_url": "./",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#0a0a0a",
   "theme_color": "#0a0a0a",
@@ -22,6 +23,9 @@
       "purpose": "any"
     }
   ],
-  "categories": ["sports", "utilities"],
+  "categories": [
+    "sports",
+    "utilities"
+  ],
   "id": "reidamesa-pwa"
 }
