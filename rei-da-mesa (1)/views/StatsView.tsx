@@ -1,27 +1,23 @@
 
-import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { AppState, Player, Match } from '../types';
-import { Trophy, Ghost, Crown, Smile, Share2, Download, Play, X, ChevronLeft, ChevronRight, Zap, Flame, Award, Star, History, Video, Loader2 } from 'lucide-react';
+import React, { useMemo, useRef } from 'react';
+import { AppState, Player } from '../types';
+import { 
+  Crown, Download, Users, User, Heart, Skull, 
+  Zap, Target, Flame, Ghost, Smile, Info, PlayCircle
+} from 'lucide-react';
 
 interface Props {
   state: AppState;
+  onShowHighlights: (id: string) => void;
 }
 
-const StatsView: React.FC<Props> = ({ state }) => {
+const StatsView: React.FC<Props> = ({ state, onShowHighlights }) => {
   const { players, history } = state;
-  const [arenaMode, setArenaMode] = useState(false);
-  const [arenaIndex, setArenaIndex] = useState(0);
-  const [highlightPlayerId, setHighlightPlayerId] = useState<string | null>(null);
-  const [currentStep, setCurrentStep] = useState(0);
-  const [isRecording, setIsRecording] = useState(false);
-  
-  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const sortedPlayers = useMemo(() => {
     return (Object.values(players) as Player[]).sort((a, b) => {
       if (b.stats.wins !== a.stats.wins) return b.stats.wins - a.stats.wins;
       if (b.stats.consecutiveWins !== a.stats.consecutiveWins) return b.stats.consecutiveWins - a.stats.consecutiveWins;
-      if (b.stats.pointsScored !== a.stats.pointsScored) return b.stats.pointsScored - a.stats.pointsScored;
       return b.stats.pneusApplied - a.stats.pneusApplied;
     });
   }, [players]);
@@ -36,346 +32,228 @@ const StatsView: React.FC<Props> = ({ state }) => {
     return Object.entries(weeklyWins).sort(([, a], [, b]) => b - a)[0]?.[0];
   }, [history]);
 
-  const getPlayerMeta = (p: Player, rank: number) => {
+  if (sortedPlayers.length === 0) {
+    return (
+      <div className="p-20 text-center font-arcade opacity-20 text-white">
+        A Arena está vazia...
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4 space-y-10 pb-28 max-w-4xl mx-auto">
+      <div className="flex justify-between items-center bg-zinc-900/50 p-4 rounded-[2rem] border border-zinc-800">
+        <div className="flex flex-col">
+          <h2 className="font-arcade text-xl text-white">Mural da Glória</h2>
+          <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest">Performance em Tempo Real</span>
+        </div>
+        <div className="bg-zinc-800/50 p-2 rounded-xl text-zinc-500">
+           <Info size={18} />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        {sortedPlayers.map((p, idx) => (
+          <PlayerCard 
+            key={p.id} 
+            p={p} 
+            rank={idx + 1} 
+            isWeeklyKing={p.id === weeklyKingId} 
+            players={players}
+            onShowHighlights={() => onShowHighlights(p.id)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+};
+
+interface PlayerCardProps {
+  p: Player;
+  rank: number;
+  isWeeklyKing: boolean;
+  players: Record<string, Player>;
+  onShowHighlights: () => void;
+}
+
+const PlayerCard: React.FC<PlayerCardProps> = ({ p, rank, isWeeklyKing, players, onShowHighlights }) => {
+  const meta = useMemo(() => {
     let nemesisId = '';
     let clientId = '';
     let maxNemesisLosses = 0;
     let maxClientWins = 0;
 
-    Object.entries(p.rivalries).forEach(([rid, stats]: [string, any]) => {
-      if (stats.lossesTo > maxNemesisLosses) { maxNemesisLosses = stats.lossesTo; nemesisId = rid; }
-      if (stats.winsAgainst > maxClientWins) { maxClientWins = stats.winsAgainst; clientId = rid; }
+    Object.entries(p.rivalries).forEach(([rid, stats]) => {
+      const s = stats as { winsAgainst: number; lossesTo: number };
+      if (s.lossesTo > maxNemesisLosses) { maxNemesisLosses = s.lossesTo; nemesisId = rid; }
+      if (s.winsAgainst > maxClientWins) { maxClientWins = s.winsAgainst; clientId = rid; }
     });
 
-    const frases = [];
-    if (rank === 0 || p.stats.consecutiveWins >= 5) frases.push({ text: "👑 IMBATÍVEL NA MESA", color: "#eab308" });
-    if (p.stats.pneusApplied >= 2) frases.push({ text: "🚜 ALERTA: PASSA TRATOR", color: "#4ade80" });
-    if (maxNemesisLosses >= 3 && players[nemesisId]) frases.push({ text: `😈 FREGUÊS DO ${players[nemesisId].name.toUpperCase()}`, color: "#ef4444" });
+    let bestFriendId = '';
+    let badVibeId = '';
+    let maxPartnerWins = -1;
+    let maxPartnerLosses = -1;
 
-    return { nemesis: players[nemesisId], client: players[clientId], frases, maxNemesisLosses, maxClientWins };
-  };
-
-  // --- LÓGICA DE GRAVAÇÃO DE VÍDEO ---
-  const recordHighlights = async (p: Player) => {
-    if (!canvasRef.current) return;
-    setIsRecording(true);
-    
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const rank = sortedPlayers.findIndex(pl => pl.id === p.id);
-    const meta = getPlayerMeta(p, rank);
-    const stream = canvas.captureStream(30);
-    
-    // Suporte a diferentes tipos de Mime para iOS/Android
-    const mimeType = MediaRecorder.isTypeSupported('video/mp4') ? 'video/mp4' : 'video/webm';
-    
-    try {
-        const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 2500000 });
-        const chunks: Blob[] = [];
-        recorder.ondataavailable = e => chunks.push(e.data);
-        
-        recorder.onstop = () => {
-          const blob = new Blob(chunks, { type: mimeType });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `REI-DA-MESA-${p.name.toUpperCase()}-HIGHLIGHTS.${mimeType.split('/')[1]}`;
-          a.click();
-          setIsRecording(false);
-        };
-
-        recorder.start();
-
-        // Sequência de Desenho (5 passos, 2s cada)
-        for (let step = 0; step < 5; step++) {
-          setCurrentStep(step);
-          drawToCanvas(ctx, p, step, meta);
-          await new Promise(r => setTimeout(r, 2000));
-        }
-
-        recorder.stop();
-    } catch (e) {
-        console.error("Erro ao gravar vídeo:", e);
-        // Fallback para download de imagem simples se MediaRecorder falhar (comum em iOS antigos)
-        const link = document.createElement('a');
-        link.download = 'destaque.png';
-        link.href = canvas.toDataURL();
-        link.click();
-        setIsRecording(false);
+    if (p.partnerships) {
+      Object.entries(p.partnerships).forEach(([pid, stats]) => {
+        const s = stats as { wins: number; losses: number };
+        if (s.wins > maxPartnerWins) { maxPartnerWins = s.wins; bestFriendId = pid; }
+        if (s.losses > maxPartnerLosses) { maxPartnerLosses = s.losses; badVibeId = pid; }
+      });
     }
-  };
 
-  const drawToCanvas = (ctx: CanvasRenderingContext2D, p: Player, step: number, meta: any) => {
-    const w = ctx.canvas.width;
-    const h = ctx.canvas.height;
+    const phrases = [];
+    if (rank === 1) phrases.push({ text: "O DONO DA MESA", color: "text-yellow-500", bg: "bg-yellow-500/10" });
+    else if (p.stats.consecutiveWins >= 5) phrases.push({ text: "IMBATÍVEL 🔥", color: "text-orange-500", bg: "bg-orange-500/10" });
+    if (p.stats.pneusApplied >= 2) phrases.push({ text: "PASSA TRATOR 🚜", color: "text-blue-400", bg: "bg-blue-400/10" });
 
-    // Background
-    ctx.fillStyle = '#0a0a0a';
-    ctx.fillRect(0, 0, w, h);
+    const winRate = p.stats.matches > 0 ? Math.round((p.stats.wins / p.stats.matches) * 100) : 0;
 
-    // Gradiente decorativo
-    const grad = ctx.createRadialGradient(w/2, h/2, 0, w/2, h/2, h/1.5);
-    grad.addColorStop(0, '#1a1a1a');
-    grad.addColorStop(1, '#000000');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, w, h);
+    return {
+      nemesis: players[nemesisId],
+      client: players[clientId],
+      bestFriend: players[bestFriendId],
+      badVibe: players[badVibeId],
+      phrases,
+      winRate
+    };
+  }, [p, rank, players]);
 
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
+  const cardRef = useRef<HTMLDivElement>(null);
 
-    // Step Logic
-    if (step === 0) {
-      ctx.fillStyle = '#eab308';
-      ctx.font = 'bold 80px Bungee, cursive';
-      ctx.fillText('REI DA MESA', w/2, h/2 - 100);
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '40px Bungee, cursive';
-      ctx.fillText('SHOW DE BOLA!', w/2, h/2 + 20);
-      ctx.fillStyle = '#737373';
-      ctx.font = '20px Inter, sans-serif';
-      ctx.fillText(`DESTAQUES DE ${p.name.toUpperCase()}`, w/2, h/2 + 100);
-    } else if (step === 1) {
-      ctx.font = '200px serif';
-      ctx.fillText(p.emoji, w/2, h/2 - 150);
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '60px Bungee, cursive';
-      ctx.fillText(`VENCEU ${p.stats.wins}`, w/2, h/2 + 50);
-      ctx.fillStyle = '#4ade80';
-      ctx.font = '30px Bungee, cursive';
-      ctx.fillText('PARTIDAS!', w/2, h/2 + 130);
-    } else if (step === 2) {
-      ctx.font = '150px serif';
-      ctx.fillText('🚜', w/2, h/2 - 150);
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '60px Bungee, cursive';
-      ctx.fillText(`${p.stats.pneusApplied} PNEUS`, w/2, h/2 + 50);
-      ctx.fillStyle = '#3b82f6';
-      ctx.font = '30px Bungee, cursive';
-      ctx.fillText('PASSOU O TRATOR!', w/2, h/2 + 130);
-    } else if (step === 3) {
-      ctx.font = '150px serif';
-      ctx.fillText('😈', w/2, h/2 - 150);
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '45px Bungee, cursive';
-      const rivalName = meta.client?.name || 'GERAL';
-      ctx.fillText(`AMASSOU O ${rivalName.toUpperCase()}`, w/2, h/2 + 50);
-      ctx.fillStyle = '#ef4444';
-      ctx.font = '30px Bungee, cursive';
-      ctx.fillText('CLIENTE FIEL DA MESA!', w/2, h/2 + 130);
-    } else if (step === 4) {
-      ctx.fillStyle = '#4ade80';
-      ctx.font = 'bold 90px Bungee, cursive';
-      ctx.save();
-      ctx.translate(w/2, h/2 - 50);
-      ctx.rotate(-0.1);
-      ctx.fillText('REI DA MESA', 0, 0);
-      ctx.restore();
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '30px Bungee, cursive';
-      ctx.fillText('AQUI A MESA TEM DONO.', w/2, h/2 + 100);
-    }
-  };
-
-  const downloadCard = async (id: string, name: string) => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    const actions = el.querySelector('.card-actions');
-    if (actions) (actions as HTMLElement).style.display = 'none';
+  const downloadCard = async () => {
+    if (!cardRef.current) return;
     try {
-      const canvas = await (window as any).html2canvas(el, { backgroundColor: '#09090b', scale: 2, useCORS: true });
+      const canvas = await (window as any).html2canvas(cardRef.current, { 
+        backgroundColor: '#0a0a0a', 
+        scale: 2,
+        useCORS: true 
+      });
       const link = document.createElement('a');
-      link.href = canvas.toDataURL("image/png");
-      link.download = `REI-DA-MESA-${name.toUpperCase()}.png`;
+      link.download = `PERFIL-${p.name.toUpperCase()}.png`;
+      link.href = canvas.toDataURL();
       link.click();
-    } finally {
-      if (actions) (actions as HTMLElement).style.display = 'flex';
-    }
+    } catch (e) { console.error(e); }
   };
-
-  if (sortedPlayers.length === 0) return <div className="p-20 text-center font-arcade opacity-20">Arena Vazia...</div>;
-
-  const highlightPlayer = highlightPlayerId ? players[highlightPlayerId] : null;
-  const highlightMeta = highlightPlayer ? getPlayerMeta(highlightPlayer, sortedPlayers.findIndex(p => p.id === highlightPlayerId)) : null;
 
   return (
-    <div className="p-4 space-y-10 pb-28 max-w-4xl mx-auto">
-      {/* Canvas Oculto para Gravação de Vídeo */}
-      <canvas ref={canvasRef} width={1080} height={1920} className="hidden" />
-
-      {/* Interface Global */}
-      <div className="flex justify-between items-center bg-zinc-900/50 p-4 rounded-[2rem] border border-zinc-800">
-        <div className="flex flex-col">
-          <h2 className="font-arcade text-xl text-white">Ranking Global</h2>
-          <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest">{sortedPlayers.length} ATLETAS ATIVOS</span>
+    <div 
+      ref={cardRef}
+      className="bg-zinc-900 border-2 border-zinc-800 rounded-[3rem] p-6 flex flex-col shadow-2xl relative overflow-hidden"
+    >
+      <div className="flex justify-between items-start mb-6">
+        <div className={`font-arcade text-xs px-4 py-2 rounded-xl border ${
+          rank === 1 ? 'bg-yellow-500 text-black border-yellow-300 shadow-lg shadow-yellow-500/20' : 
+          rank === 2 ? 'bg-zinc-300 text-black border-zinc-100' : 
+          rank === 3 ? 'bg-orange-800 text-white border-orange-700' : 
+          'bg-zinc-800 text-zinc-500 border-zinc-700'
+        }`}>
+          RANK #{rank}
         </div>
-        <button 
-          onClick={() => { setArenaMode(true); setArenaIndex(0); }}
-          className="bg-yellow-500 text-black px-6 py-3 rounded-2xl font-arcade text-[10px] flex items-center gap-2 shadow-[0_0_20px_rgba(234,179,8,0.3)] animate-pulse"
-        >
-          <Play size={14} fill="currentColor" /> MODO ARENA
+        
+        <div className="flex gap-2">
+           <button 
+             onClick={onShowHighlights} 
+             className="bg-[#4ade8022] text-[#4ade80] p-2 rounded-xl border border-[#4ade8044] active:scale-90 transition-all hover:bg-[#4ade8044]"
+             title="Ver Highlights"
+           >
+              <PlayCircle size={20} />
+           </button>
+           {isWeeklyKing && (
+             <div className="bg-yellow-500/10 text-yellow-500 font-arcade text-[9px] px-3 py-1.5 rounded-xl border border-yellow-500/20 flex items-center gap-2">
+               <Crown size={12} fill="currentColor" /> REI DA SEMANA
+             </div>
+           )}
+        </div>
+      </div>
+
+      <div className="flex items-center gap-6 mb-8">
+        <div className="text-7xl drop-shadow-[0_0_15px_rgba(255,255,255,0.1)] animate-pulse">{p.emoji}</div>
+        <div className="flex-1 min-w-0">
+          <h3 className="font-arcade text-3xl text-white tracking-tighter uppercase truncate leading-none mb-2">{p.name}</h3>
+          <div className="flex flex-wrap gap-2">
+            {meta.phrases.map((f, i) => (
+              <span key={i} className={`${f.bg} ${f.color} font-arcade text-[7px] px-2 py-1 rounded-md border border-current/10`}>
+                {f.text}
+              </span>
+            ))}
+          </div>
+        </div>
+        <button onClick={downloadCard} className="p-3 bg-zinc-800 rounded-2xl text-zinc-500 active:scale-90 hover:text-white transition-colors">
+          <Download size={20} />
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end pt-4">
-        {sortedPlayers[1] && <PodiumCard p={sortedPlayers[1]} pos={2} color="border-zinc-500 bg-zinc-500/5" />}
-        {sortedPlayers[0] && <PodiumCard p={sortedPlayers[0]} pos={1} color="border-yellow-500 bg-yellow-500/10 scale-110 z-10 shadow-[0_0_50px_rgba(234,179,8,0.1)]" isKing={sortedPlayers[0].id === weeklyKingId} />}
-        {sortedPlayers[2] && <PodiumCard p={sortedPlayers[2]} pos={3} color="border-orange-800 bg-orange-800/5" />}
+      <div className="grid grid-cols-4 gap-2 mb-6">
+        <QuickStat label="GAMES" value={p.stats.matches} />
+        <QuickStat label="WINS" value={p.stats.wins} color="text-green-500" />
+        <QuickStat label="LOSS" value={p.stats.losses} color="text-red-500" />
+        <QuickStat label="WR%" value={`${meta.winRate}%`} color="text-blue-400" />
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
-        {sortedPlayers.map((p, idx) => {
-          const { nemesis, client, frases } = getPlayerMeta(p, idx);
-          const winRate = p.stats.matches ? Math.round((p.stats.wins/p.stats.matches)*100) : 0;
-          const isWeeklyKing = p.id === weeklyKingId;
-
-          return (
-            <div key={p.id} className="relative group">
-              <div id={`card-${p.id}`} className="bg-[#0a0a0a] p-8 pt-12 rounded-[3.5rem] border border-zinc-800 space-y-6 shadow-2xl relative overflow-hidden transition-transform hover:scale-[1.02]">
-                {isWeeklyKing && (
-                  <div className="absolute top-0 left-0 right-0 bg-gradient-to-r from-yellow-600 to-yellow-400 text-black text-[9px] font-arcade py-2 flex justify-center items-center gap-2 z-20">
-                    <Crown size={12} fill="currentColor" /> REI DA MESA DA SEMANA
-                  </div>
-                )}
-
-                <div className="flex justify-between items-start relative z-10">
-                  <div className="flex flex-col gap-1.5">
-                    <span className="font-arcade text-[8px] text-[#4ade80] px-2.5 py-1 bg-[#4ade801a] rounded-lg border border-[#4ade8033] w-fit">RANK #{idx + 1}</span>
-                    <span className={`text-[8px] font-bold px-2.5 py-1 rounded-lg border w-fit ${winRate > 50 ? 'text-green-500 border-green-900' : 'text-red-500 border-red-900'}`}>{winRate}% WR</span>
-                  </div>
-                  <div className="card-actions flex gap-2">
-                    <button onClick={() => { setHighlightPlayerId(p.id); setCurrentStep(0); }} className="p-2.5 bg-zinc-900 rounded-xl text-yellow-500 border border-yellow-500/20"><History size={18} /></button>
-                    <button onClick={() => downloadCard(`card-${p.id}`, p.name)} className="p-2.5 bg-zinc-900 rounded-xl text-zinc-500 hover:text-white border border-white/5"><Download size={18} /></button>
-                  </div>
-                </div>
-
-                <div className="text-center space-y-2 relative z-10">
-                  <div className="text-8xl mb-2 flex justify-center drop-shadow-[0_0_25px_rgba(255,255,255,0.15)]">{p.emoji}</div>
-                  <h3 className="font-arcade text-3xl text-white tracking-tighter">{p.name}</h3>
-                  <div className="flex justify-center gap-2 flex-wrap min-h-[20px]">
-                    {frases.map((f, i) => (
-                      <span key={i} style={{color: f.color}} className="text-[8px] font-arcade px-3 py-1.5 rounded-lg border border-current/20">{f.text}</span>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-2 relative z-10">
-                  <StatBox label="VITÓRIAS" value={p.stats.wins} color="text-[#4ade80]" />
-                  <StatBox label="PONTOS" value={p.stats.pointsScored} color="text-yellow-500" />
-                  <StatBox label="TRATOR" value={p.stats.pneusApplied} color="text-blue-400" />
-                  <StatBox label="DERROTAS" value={p.stats.losses} color="text-red-500" />
-                  <StatBox label="SEQUÊNCIA" value={p.stats.consecutiveWins} color="text-orange-500" />
-                  <StatBox label="ESTEPE" value={p.stats.pneusReceived} color="text-zinc-600" />
-                </div>
-
-                <div className="space-y-2 pt-4 border-t border-zinc-900/50 relative z-10">
-                  <RivalBox label="NÊMESIS" p={nemesis} type="danger" icon={<Ghost size={14} />} sub="Carrasco" />
-                  <RivalBox label="FREGUÊS" p={client} type="success" icon={<Smile size={14} />} sub="Cliente Fiel" />
-                </div>
-              </div>
-            </div>
-          );
-        })}
+      <div className="grid grid-cols-3 gap-3 mb-6">
+        <DetailBox label="STREAK" value={p.stats.maxConsecutiveWins} icon={<Flame size={14} className="text-orange-500" />} />
+        <DetailBox label="PNEUS +" value={p.stats.pneusApplied} icon={<Zap size={14} className="text-yellow-500" />} />
+        <DetailBox label="PNEUS -" value={p.stats.pneusReceived} icon={<Zap size={14} className="text-red-500" />} />
       </div>
 
-      {/* --- MODO ARENA OVERLAY --- */}
-      {arenaMode && (
-        <div className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-center p-6 animate-in fade-in duration-700">
-          <button onClick={() => setArenaMode(false)} className="absolute top-8 right-8 text-zinc-500 hover:text-white z-[110] bg-zinc-900 p-4 rounded-full"><X size={32} /></button>
-          <div className="bg-zinc-900 p-12 rounded-[5rem] border-4 border-yellow-500/30 text-center space-y-10">
-                <div className="text-[140px] animate-bounce">{sortedPlayers[arenaIndex].emoji}</div>
-                <h2 className="font-arcade text-6xl text-white">{sortedPlayers[arenaIndex].name}</h2>
-                <div className="font-arcade text-2xl text-[#4ade80]">RANK # {arenaIndex + 1}</div>
-          </div>
+      <div className="space-y-3 bg-black/30 p-4 rounded-[2rem] border border-white/5">
+        <div className="flex justify-around items-center border-b border-white/5 pb-3">
+            <StyleItem icon={<User size={14} />} label="SOLO" value={p.stats.soloMatches} />
+            <div className="w-[1px] h-6 bg-zinc-800"></div>
+            <StyleItem icon={<Users size={14} />} label="DUPLA" value={p.stats.duplasMatches} />
         </div>
-      )}
 
-      {/* --- MODO HIGHLIGHTS SEQUENCIAL --- */}
-      {highlightPlayerId && highlightPlayer && (
-        <div className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-center p-6 animate-in zoom-in duration-300">
-           <button onClick={() => setHighlightPlayerId(null)} className="absolute top-8 right-8 text-zinc-500 z-[110] bg-zinc-900 p-3 rounded-xl"><X size={24} /></button>
-
-           <div className="w-full max-w-sm relative aspect-[9/16] bg-zinc-900 rounded-[3rem] border border-zinc-800 overflow-hidden shadow-2xl flex flex-col">
-              <div className="flex gap-1 p-4 absolute top-0 left-0 right-0 z-50">
-                  {[0,1,2,3,4].map(step => (
-                      <div key={step} className="h-1 flex-1 bg-zinc-800 rounded-full overflow-hidden">
-                          <div className={`h-full bg-yellow-500 transition-all duration-100 ${step < currentStep ? 'w-full' : step === currentStep ? 'w-full animate-progress' : 'w-0'}`}></div>
-                      </div>
-                  ))}
-              </div>
-
-              <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-8">
-                  {currentStep === 0 && <HighlightScreen icon={<Trophy size={64} fill="currentColor" />} title="Show de Bola!" sub={`Destaques de ${highlightPlayer.name}`} color="text-yellow-500" />}
-                  {currentStep === 1 && <HighlightScreen icon={<span className="text-8xl">{highlightPlayer.emoji}</span>} title={`Venceu ${highlightPlayer.stats.wins}`} sub="Partidas Épicas!" color="text-[#4ade80]" />}
-                  {currentStep === 2 && <HighlightScreen icon={<span className="text-8xl">🚜</span>} title={`${highlightPlayer.stats.pneusApplied} Pneus`} sub="Passou o trator!" color="text-blue-400" />}
-                  {currentStep === 3 && <HighlightScreen icon={<span className="text-8xl">😈</span>} title={`Amassou o ${highlightMeta?.client?.name || 'Geral'}`} sub="Cliente Fiel!" color="text-red-500" />}
-                  {currentStep === 4 && <HighlightScreen icon={<span className="text-8xl">👑</span>} title="REI DA MESA" sub="Aqui a mesa tem dono." color="text-yellow-500" />}
-              </div>
-
-              <div className="flex justify-between p-8 border-t border-zinc-800 relative z-10 bg-black/20">
-                  <button onClick={() => setCurrentStep(s => Math.max(0, s-1))} className="p-4 rounded-2xl bg-zinc-800 text-white"><ChevronLeft size={24} /></button>
-                  <button 
-                    disabled={isRecording}
-                    onClick={() => {
-                        if (currentStep < 4) setCurrentStep(s => s + 1);
-                        else recordHighlights(highlightPlayer);
-                    }} 
-                    className="flex-1 mx-4 rounded-2xl bg-[#4ade80] text-black font-arcade text-[10px] flex items-center justify-center gap-2"
-                  >
-                      {isRecording ? <Loader2 size={16} className="animate-spin" /> : currentStep < 4 ? 'PRÓXIMO' : 'BAIXAR VÍDEO'}
-                  </button>
-                  <button onClick={() => { if(currentStep < 4) setCurrentStep(s => s + 1); }} className="p-4 rounded-2xl bg-zinc-800 text-white"><ChevronRight size={24} /></button>
-              </div>
-           </div>
+        <div className="grid grid-cols-1 gap-2 pt-1">
+          <CompactAffinity label="MELHOR DUPLA" p={meta.bestFriend} icon={<Heart size={12} className="text-pink-500" />} />
+          <CompactAffinity label="MAIOR RIVAL" p={meta.nemesis} icon={<Skull size={12} className="text-red-500" />} />
+          <CompactAffinity label="SEU FREGUÊS" p={meta.client} icon={<Smile size={12} className="text-green-500" />} />
         </div>
-      )}
+      </div>
+
+      <div className="mt-6 text-center">
+         <span className="font-arcade text-[7px] text-zinc-700 tracking-[0.2em]">REI DA MESA ANALYTICS • V2.0</span>
+      </div>
     </div>
   );
 };
 
-const HighlightScreen = ({ icon, title, sub, color }: any) => (
-    <div className="animate-in fade-in duration-500 flex flex-col items-center gap-6">
-        <div className={`${color} drop-shadow-2xl animate-bounce`}>{icon}</div>
-        <h2 className={`font-arcade text-4xl text-white uppercase`}>{title}</h2>
-        <div className={`${color} font-arcade text-lg`}>{sub}</div>
-    </div>
-);
-
-const PodiumCard = ({ p, pos, color, isKing }: { p: Player, pos: number, color: string, isKing?: boolean }) => (
-  <div className={`p-6 rounded-[3rem] border-2 flex flex-col items-center text-center space-y-3 relative transition-all ${color} shadow-2xl`}>
-    {isKing && (
-        <div className="absolute -top-6 -right-2 bg-yellow-500 text-black p-3 rounded-full shadow-lg z-20 animate-pulse">
-            <Crown size={24} fill="currentColor" />
-        </div>
-    )}
-    <div className="text-7xl mb-1">{p.emoji}</div>
-    <h3 className="font-arcade text-xl text-white truncate w-full">{p.name}</h3>
-    <div className="text-[10px] font-bold text-zinc-500 uppercase">{p.stats.wins} VIT | {p.stats.pneusApplied} 🛞</div>
+const QuickStat = ({ label, value, color = "text-white" }: any) => (
+  <div className="bg-black/20 p-2 rounded-2xl border border-white/5 flex flex-col items-center">
+    <span className="text-[6px] font-bold text-zinc-500 uppercase tracking-widest mb-1">{label}</span>
+    <span className={`font-arcade text-base ${color}`}>{value}</span>
   </div>
 );
 
-const StatBox = ({ label, value, color }: { label: string, value: any, color: string }) => (
-    <div className="bg-zinc-900/40 p-3 rounded-2xl border border-zinc-800/30 flex flex-col items-center text-center">
-        <div className="text-[7px] font-bold text-zinc-600 mb-1 uppercase">{label}</div>
-        <div className={`font-arcade text-lg ${color}`}>{value}</div>
+const DetailBox = ({ label, value, icon }: any) => (
+  <div className="bg-zinc-800/50 p-3 rounded-2xl border border-white/5 flex flex-col items-center">
+    <div className="flex items-center gap-1.5 mb-1 opacity-50">
+       {icon}
+       <span className="text-[6px] font-bold text-zinc-400 uppercase">{label}</span>
+    </div>
+    <span className="font-arcade text-lg text-white">{value}</span>
+  </div>
+);
+
+const StyleItem = ({ icon, label, value }: any) => (
+    <div className="flex items-center gap-2">
+        <div className="text-zinc-600">{icon}</div>
+        <span className="text-[8px] font-bold text-zinc-500 uppercase">{label}:</span>
+        <span className="text-[10px] font-arcade text-white">{value}</span>
     </div>
 );
 
-const RivalBox = ({ label, p, type, icon, sub }: { label: string, p: any, type: 'danger' | 'success', icon: any, sub: string }) => (
-    <div className={`flex items-center justify-between p-3 rounded-2xl bg-black/40 border transition-all ${type === 'danger' ? 'border-red-900/10' : 'border-green-900/10'}`}>
-        <div className="flex items-center gap-3">
-            <div className={`p-2 rounded-xl ${type === 'danger' ? 'bg-red-500/10 text-red-500' : 'bg-green-500/10 text-green-500'}`}>{icon}</div>
-            <div className="flex flex-col">
-                <div className="text-[8px] font-arcade text-zinc-500 uppercase tracking-widest">{label}</div>
-                <div className="text-[7px] text-zinc-600 font-bold uppercase">{sub}</div>
-            </div>
-        </div>
-        <div className="flex items-center gap-2">
-            <span className="text-white font-arcade text-xs truncate max-w-[80px]">{p ? p.name : 'VAGO'}</span>
-            <span className="text-2xl">{p?.emoji || '❔'}</span>
-        </div>
-    </div>
+const CompactAffinity = ({ label, p, icon }: any) => (
+  <div className="flex items-center justify-between px-2">
+     <div className="flex items-center gap-2">
+        {icon}
+        <span className="text-[7px] font-bold text-zinc-500 uppercase tracking-tighter">{label}</span>
+     </div>
+     <div className="flex items-center gap-2">
+        <span className="text-[9px] font-arcade text-zinc-300">{p ? p.name.split(' ')[0] : '---'}</span>
+        <span className="text-lg">{p?.emoji || '❔'}</span>
+     </div>
+  </div>
 );
 
 export default StatsView;

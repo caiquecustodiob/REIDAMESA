@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { HashRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
-import { Trophy, ListOrdered, Settings, Zap, Crown, Download } from 'lucide-react';
+import { HashRouter, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
+import { Trophy, ListOrdered, Settings, Zap, Crown, Download, PlayCircle } from 'lucide-react';
 import { Player, Match, AppState, GameMode } from './types';
 import { INITIAL_PLAYERS } from './constants';
 import { playArcadeSound } from './audio';
@@ -11,33 +11,35 @@ import GameView from './views/GameView';
 import QueueView from './views/QueueView';
 import StatsView from './views/StatsView';
 import SettingsView from './views/SettingsView';
+import HighlightsOverlay from './views/HighlightsOverlay';
 
 const AppContent: React.FC = () => {
   const location = useLocation();
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [highlightPlayerId, setHighlightPlayerId] = useState<string | null>(null);
+  
   const [state, setState] = useState<AppState>(() => {
-    const saved = localStorage.getItem('rei-da-mesa-v1');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      Object.keys(parsed.players).forEach(id => {
-        const p = parsed.players[id];
-        if (p.active === undefined) p.active = parsed.queue.includes(id);
-        if (p.stats.pneusApplied === undefined) p.stats.pneusApplied = 0;
-        if (p.stats.pneusReceived === undefined) p.stats.pneusReceived = 0;
-        if (p.stats.losses === undefined) p.stats.losses = p.stats.matches - p.stats.wins;
-      });
-      return parsed;
-    }
+    const saved = localStorage.getItem('rei-da-mesa-v1.4');
+    if (saved) return JSON.parse(saved);
+    
+    const playersWithNewStats = { ...INITIAL_PLAYERS };
+    Object.keys(playersWithNewStats).forEach(id => {
+      const p = playersWithNewStats[id];
+      if (!p.stats.soloMatches) p.stats.soloMatches = 0;
+      if (!p.stats.duplasMatches) p.stats.duplasMatches = 0;
+      if (!p.partnerships) p.partnerships = {};
+    });
+
     return {
-      players: INITIAL_PLAYERS,
-      queue: Object.keys(INITIAL_PLAYERS),
+      players: playersWithNewStats,
+      queue: Object.keys(playersWithNewStats),
       activeMatch: null,
       history: []
     };
   });
 
   useEffect(() => {
-    localStorage.setItem('rei-da-mesa-v1', JSON.stringify(state));
+    localStorage.setItem('rei-da-mesa-v1.4', JSON.stringify(state));
   }, [state]);
 
   useEffect(() => {
@@ -60,8 +62,9 @@ const AppContent: React.FC = () => {
     const id = Date.now().toString();
     const newPlayer: Player = {
       id, name, emoji, level, active: true,
-      stats: { matches: 0, wins: 0, losses: 0, pointsScored: 0, consecutiveWins: 0, maxConsecutiveWins: 0, pneusApplied: 0, pneusReceived: 0 },
-      rivalries: {}
+      stats: { matches: 0, wins: 0, losses: 0, pointsScored: 0, consecutiveWins: 0, maxConsecutiveWins: 0, pneusApplied: 0, pneusReceived: 0, soloMatches: 0, duplasMatches: 0 },
+      rivalries: {},
+      partnerships: {}
     };
     setState(prev => ({
       ...prev,
@@ -70,57 +73,20 @@ const AppContent: React.FC = () => {
     }));
   };
 
-  const togglePlayerActive = (id: string) => {
-    setState(prev => {
-      const p = prev.players[id];
-      if (!p) return prev;
-      const newActive = !p.active;
-      let newQueue = [...prev.queue];
-      if (newActive && !newQueue.includes(id)) newQueue.push(id);
-      else if (!newActive) newQueue = newQueue.filter(pid => pid !== id);
-      return { ...prev, players: { ...prev.players, [id]: { ...p, active: newActive } }, queue: newQueue };
-    });
-  };
-
-  const moveInQueue = (index: number, direction: 'up' | 'down') => {
-    setState(prev => {
-      const newQueue = [...prev.queue];
-      const targetIndex = direction === 'up' ? index - 1 : index + 1;
-      if (targetIndex < 0 || targetIndex >= newQueue.length) return prev;
-      [newQueue[index], newQueue[targetIndex]] = [newQueue[targetIndex], newQueue[index]];
-      return { ...prev, queue: newQueue };
-    });
-  };
-
-  const removeFromQueue = (id: string) => {
-    setState(prev => ({
-      ...prev,
-      queue: prev.queue.filter(pid => pid !== id),
-      players: { ...prev.players, [id]: { ...prev.players[id], active: false } }
-    }));
-  };
-
-  const shuffleQueue = () => {
-    setState(prev => {
-      const playingIds = prev.activeMatch ? [...prev.activeMatch.sideA, ...prev.activeMatch.sideB] : [];
-      const waiters = prev.queue.filter(id => !playingIds.includes(id));
-      const shuffled = [...waiters].sort(() => Math.random() - 0.5);
-      return { ...prev, queue: [...playingIds, ...shuffled] };
-    });
-    playArcadeSound('deuce');
-  };
-
   const startMatch = (mode: GameMode) => {
-    if (state.queue.length < (mode === 'SOLO' ? 2 : 4)) return;
-    const sideA = mode === 'SOLO' ? [state.queue[0]] : [state.queue[0], state.queue[1]];
-    const sideB = mode === 'SOLO' ? [state.queue[1]] : [state.queue[2], state.queue[3]];
-    setState(prev => ({
-      ...prev,
-      activeMatch: {
-        id: Date.now().toString(),
-        mode, sideA, sideB, scoreA: 0, scoreB: 0, winner: null, timestamp: Date.now(), isDeuce: false
-      }
-    }));
+    setState(prev => {
+      if (prev.queue.length < (mode === 'SOLO' ? 2 : 4)) return prev;
+      const sideA = mode === 'SOLO' ? [prev.queue[0]] : [prev.queue[0], prev.queue[1]];
+      const sideB = mode === 'SOLO' ? [prev.queue[1]] : [prev.queue[2], prev.queue[3]];
+      return {
+        ...prev,
+        activeMatch: {
+          id: Date.now().toString(),
+          mode, sideA, sideB, scoreA: 0, scoreB: 0, winner: null, timestamp: Date.now(), isDeuce: false,
+          maxTrailingA: 0, maxTrailingB: 0
+        }
+      };
+    });
   };
 
   const updateScore = (side: 'A' | 'B', amount: number) => {
@@ -133,8 +99,16 @@ const AppContent: React.FC = () => {
       const limit = match.mode === 'SOLO' ? 7 : 10;
       const deuceTrigger = match.mode === 'SOLO' ? 6 : 9;
       const oldWinner = match.winner;
+
       if (side === 'A') match.scoreA = Math.max(0, match.scoreA + amount);
       if (side === 'B') match.scoreB = Math.max(0, match.scoreB + amount);
+
+      // Rastrear maior desvantagem
+      const diffA = match.scoreB - match.scoreA;
+      const diffB = match.scoreA - match.scoreB;
+      match.maxTrailingA = Math.max(match.maxTrailingA || 0, diffA);
+      match.maxTrailingB = Math.max(match.maxTrailingB || 0, diffB);
+
       if (!match.isDeuce) {
         if (match.scoreA === 5 && match.scoreB === 0) match.winner = 'A';
         else if (match.scoreB === 5 && match.scoreA === 0) match.winner = 'B';
@@ -151,13 +125,22 @@ const AppContent: React.FC = () => {
         } else if (match.scoreA >= 2) match.winner = 'A';
         else if (match.scoreB >= 2) match.winner = 'B';
       }
-      if (match.winner && !oldWinner) playArcadeSound('victory');
+
+      if (match.winner && !oldWinner) {
+        // Checar se foi virada (estava perdendo por 2+)
+        if (match.winner === 'A' && (match.maxTrailingA || 0) >= 2) match.isComeback = true;
+        if (match.winner === 'B' && (match.maxTrailingB || 0) >= 2) match.isComeback = true;
+        playArcadeSound('victory');
+      }
+
       return { ...prev, activeMatch: match };
     });
   };
 
-  const finishMatch = () => {
+  const finishMatch = (autoStartNext: boolean = false) => {
     if (!state.activeMatch || !state.activeMatch.winner) return;
+    const currentMode = state.activeMatch.mode;
+
     setState(prev => {
       const match = prev.activeMatch!;
       const isWinnerA = match.winner === 'A';
@@ -169,61 +152,81 @@ const AppContent: React.FC = () => {
 
       const updatedPlayers = { ...prev.players };
 
-      // Atualiza Vencedores
-      winnerIds.forEach(pid => {
-        const p = updatedPlayers[pid];
-        if (p) {
-          p.stats.matches++;
+      const updatePlayerStats = (id: string, isWinner: boolean, isPneu: boolean) => {
+        const p = updatedPlayers[id];
+        if (!p) return;
+        p.stats.matches++;
+        p.stats.pointsScored += isWinner ? winnerScore : loserScore;
+        if (match.mode === 'SOLO') p.stats.soloMatches++;
+        else p.stats.duplasMatches++;
+        if (isWinner) {
           p.stats.wins++;
-          p.stats.pointsScored += winnerScore;
           p.stats.consecutiveWins++;
           p.stats.maxConsecutiveWins = Math.max(p.stats.maxConsecutiveWins, p.stats.consecutiveWins);
           if (isPneu) p.stats.pneusApplied++;
-          
-          // Rivalidades
-          loserIds.forEach(lpid => {
-            if (!p.rivalries[lpid]) p.rivalries[lpid] = { winsAgainst: 0, lossesTo: 0 };
-            p.rivalries[lpid].winsAgainst++;
-          });
-        }
-      });
-
-      // Atualiza Perdedores
-      loserIds.forEach(pid => {
-        const p = updatedPlayers[pid];
-        if (p) {
-          p.stats.matches++;
+        } else {
           p.stats.losses++;
-          p.stats.pointsScored += loserScore;
           p.stats.consecutiveWins = 0;
           if (isPneu) p.stats.pneusReceived++;
-
-          // Rivalidades
-          winnerIds.forEach(wpid => {
-            if (!p.rivalries[wpid]) p.rivalries[wpid] = { winsAgainst: 0, lossesTo: 0 };
-            p.rivalries[wpid].lossesTo++;
+        }
+        const opponents = isWinner ? loserIds : winnerIds;
+        opponents.forEach(oid => {
+          if (!p.rivalries[oid]) p.rivalries[oid] = { winsAgainst: 0, lossesTo: 0 };
+          if (isWinner) p.rivalries[oid].winsAgainst++;
+          else p.rivalries[oid].lossesTo++;
+        });
+        if (match.mode === 'DUPLAS') {
+          const teammates = isWinner ? winnerIds : loserIds;
+          teammates.forEach(tid => {
+            if (tid === id) return;
+            if (!p.partnerships) p.partnerships = {};
+            if (!p.partnerships[tid]) p.partnerships[tid] = { wins: 0, losses: 0 };
+            if (isWinner) p.partnerships[tid].wins++;
+            else p.partnerships[tid].losses++;
           });
         }
-      });
+      };
+
+      winnerIds.forEach(id => updatePlayerStats(id, true, isPneu));
+      loserIds.forEach(id => updatePlayerStats(id, false, isPneu));
 
       const others = prev.queue.filter(id => !winnerIds.includes(id) && !loserIds.includes(id));
       const newQueue = [...winnerIds, ...others, ...loserIds];
+
+      let nextActiveMatch = null;
+      if (autoStartNext && newQueue.length >= (currentMode === 'SOLO' ? 2 : 4)) {
+        nextActiveMatch = {
+          id: (Date.now() + 1).toString(),
+          mode: currentMode,
+          sideA: currentMode === 'SOLO' ? [newQueue[0]] : [newQueue[0], newQueue[1]],
+          sideB: currentMode === 'SOLO' ? [newQueue[1]] : [newQueue[2], newQueue[3]],
+          scoreA: 0, scoreB: 0, winner: null, timestamp: Date.now(), isDeuce: false,
+          maxTrailingA: 0, maxTrailingB: 0
+        };
+      }
 
       return {
         ...prev,
         players: updatedPlayers,
         queue: newQueue,
         history: [match, ...prev.history].slice(0, 50),
-        activeMatch: null
+        activeMatch: nextActiveMatch
       };
     });
   };
 
-  const resetMatch = () => setState(prev => ({ ...prev, activeMatch: null }));
   const isMatchActive = state.activeMatch !== null && location.pathname === '/';
 
   return (
     <div className="flex flex-col min-h-screen bg-[#0a0a0a]">
+      {highlightPlayerId && (
+        <HighlightsOverlay 
+          playerId={highlightPlayerId} 
+          state={state} 
+          onClose={() => setHighlightPlayerId(null)} 
+        />
+      )}
+
       {!isMatchActive && (
         <header className="bg-[#1a1a1a] p-4 flex justify-between items-center border-b border-[#333]">
           <h1 className="font-arcade text-2xl text-[#4ade80] tracking-tighter">REI DA MESA</h1>
@@ -239,9 +242,32 @@ const AppContent: React.FC = () => {
 
       <main className={`flex-1 overflow-y-auto ${!isMatchActive ? 'pb-20' : ''}`}>
         <Routes>
-          <Route path="/" element={<GameView state={state} updateScore={updateScore} finishMatch={finishMatch} startMatch={startMatch} resetMatch={resetMatch} />} />
-          <Route path="/queue" element={<QueueView state={state} addPlayer={addPlayer} toggleActive={togglePlayerActive} moveInQueue={moveInQueue} shuffleQueue={shuffleQueue} removeFromQueue={removeFromQueue} updatePlayer={(id, n, l, e) => setState(prev => ({ ...prev, players: { ...prev.players, [id]: { ...prev.players[id], name: n, level: l, emoji: e } } }))} removePlayer={id => setState(prev => { const newP = { ...prev.players }; delete newP[id]; return { ...prev, players: newP, queue: prev.queue.filter(pid => pid !== id) }; })} />} />
-          <Route path="/stats" element={<StatsView state={state} />} />
+          <Route path="/" element={<GameView state={state} updateScore={updateScore} finishMatch={finishMatch} startMatch={startMatch} resetMatch={() => setState(p => ({...p, activeMatch: null}))} />} />
+          <Route path="/queue" element={<QueueView state={state} addPlayer={addPlayer} toggleActive={id => {
+            setState(prev => {
+              const p = prev.players[id];
+              const newActive = !p.active;
+              let nq = [...prev.queue];
+              if (newActive) nq.push(id); else nq = nq.filter(pid => pid !== id);
+              return {...prev, queue: nq, players: {...prev.players, [id]: {...p, active: newActive}}};
+            })
+          }} moveInQueue={(idx, dir) => {
+            setState(prev => {
+              const nq = [...prev.queue];
+              const target = dir === 'up' ? idx-1 : idx+1;
+              if (target < 0 || target >= nq.length) return prev;
+              [nq[idx], nq[target]] = [nq[target], nq[idx]];
+              return {...prev, queue: nq};
+            });
+          }} shuffleQueue={() => {
+            setState(prev => {
+              const playing = prev.activeMatch ? [...prev.activeMatch.sideA, ...prev.activeMatch.sideB] : [];
+              const waiters = prev.queue.filter(id => !playing.includes(id)).sort(() => Math.random() - 0.5);
+              return {...prev, queue: [...playing, ...waiters]};
+            });
+            playArcadeSound('deuce');
+          }} removeFromQueue={id => setState(p => ({...p, queue: p.queue.filter(i => i !== id)}))} updatePlayer={(id, n, l, e) => setState(prev => ({ ...prev, players: { ...prev.players, [id]: { ...prev.players[id], name: n, level: l, emoji: e } } }))} removePlayer={id => setState(prev => { const newP = { ...prev.players }; delete newP[id]; return { ...prev, players: newP, queue: prev.queue.filter(pid => pid !== id) }; })} />} />
+          <Route path="/stats" element={<StatsView state={state} onShowHighlights={setHighlightPlayerId} />} />
           <Route path="/settings" element={<SettingsView state={state} setState={setState} installPWA={installPWA} canInstall={!!deferredPrompt} />} />
         </Routes>
       </main>

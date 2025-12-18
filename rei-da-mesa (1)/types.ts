@@ -14,13 +14,21 @@ export interface Player {
     pointsScored: number;
     consecutiveWins: number;
     maxConsecutiveWins: number;
-    pneusApplied: number; // Vitórias por 5-0
-    pneusReceived: number; // Derrotas por 5-0
+    pneusApplied: number;
+    pneusReceived: number;
+    soloMatches: number;
+    duplasMatches: number;
   };
   rivalries: {
     [playerId: string]: {
       winsAgainst: number;
       lossesTo: number;
+    };
+  };
+  partnerships: {
+    [partnerId: string]: {
+      wins: number;
+      losses: number;
     };
   };
 }
@@ -30,18 +38,21 @@ export type GameMode = 'SOLO' | 'DUPLAS';
 export interface Match {
   id: string;
   mode: GameMode;
-  sideA: string[]; // Player IDs
-  sideB: string[]; // Player IDs
+  sideA: string[];
+  sideB: string[];
   scoreA: number;
   scoreB: number;
   winner: 'A' | 'B' | null;
   timestamp: number;
   isDeuce: boolean;
+  isComeback?: boolean; // Nova propriedade
+  maxTrailingA?: number; // Auxiliar para cálculo de virada
+  maxTrailingB?: number; // Auxiliar para cálculo de virada
 }
 
 export interface AppState {
   players: Record<string, Player>;
-  queue: string[]; // IDs dos jogadores ativos na fila
+  queue: string[];
   activeMatch: Match | null;
   history: Match[];
 }
