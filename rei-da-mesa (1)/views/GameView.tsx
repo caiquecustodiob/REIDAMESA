@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { AppState, Match, GameMode } from '../types';
-import { Plus, Minus, Crown, Zap, RefreshCw, Play } from 'lucide-react';
+import { Plus, Minus, Crown, Zap, RefreshCw, Play, XCircle } from 'lucide-react';
 
 interface Props {
   state: AppState;
@@ -57,24 +57,6 @@ const GameView: React.FC<Props> = ({ state, updateScore, finishMatch, startMatch
             <Crown /> MODO DUPLAS (2x2)
           </button>
         </div>
-
-        {queue.length > 0 && (
-          <div className="mt-8 bg-zinc-900/50 p-4 rounded-xl border border-zinc-800 w-full max-w-xs">
-            <h3 className="text-xs font-bold text-zinc-500 mb-2 uppercase tracking-widest">Próximos na Fila</h3>
-            <div className="flex -space-x-2 justify-center">
-              {queue.slice(0, 5).map(pid => (
-                <div key={pid} className="w-10 h-10 rounded-full bg-zinc-800 border-2 border-zinc-900 flex items-center justify-center text-xl shadow-lg">
-                  {players[pid]?.emoji}
-                </div>
-              ))}
-              {queue.length > 5 && (
-                <div className="w-10 h-10 rounded-full bg-zinc-700 border-2 border-zinc-900 flex items-center justify-center text-xs font-bold shadow-lg">
-                  +{queue.length - 5}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
       </div>
     );
   }
@@ -85,123 +67,174 @@ const GameView: React.FC<Props> = ({ state, updateScore, finishMatch, startMatch
   if (showIntro) {
     return (
         <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-500">
-            <div className="font-arcade text-4xl mb-4 text-[#4ade80] animate-pulse">NOVO COMBATE!</div>
+            <div className="font-arcade text-4xl mb-4 text-[#4ade80] animate-pulse uppercase tracking-tighter">Confronto Mortal!</div>
             <div className="flex items-center gap-6 mb-8">
                 <div className="flex flex-col items-center">
-                    <span className="text-6xl mb-2">{pA[0].emoji}</span>
-                    <span className="font-arcade text-xl">{pA[0].name}</span>
+                    <span className="text-7xl mb-2 drop-shadow-[0_0_15px_rgba(74,222,128,0.5)]">{pA.map(p => p.emoji).join('')}</span>
+                    <span className="font-arcade text-2xl text-white">{pA.map(p => p.name).join(' & ')}</span>
                 </div>
-                <div className="font-arcade text-5xl text-red-500">VS</div>
+                <div className="font-arcade text-6xl text-red-500 animate-bounce">VS</div>
                 <div className="flex flex-col items-center">
-                    <span className="text-6xl mb-2">{pB[0].emoji}</span>
-                    <span className="font-arcade text-xl">{pB[0].name}</span>
+                    <span className="text-7xl mb-2 drop-shadow-[0_0_15px_rgba(74,222,128,0.5)]">{pB.map(p => p.emoji).join('')}</span>
+                    <span className="font-arcade text-2xl text-white">{pB.map(p => p.name).join(' & ')}</span>
                 </div>
             </div>
-            <div className="text-zinc-500 font-arcade">“Rei da Mesa não se escolhe. Se aguenta.”</div>
+            <div className="text-[#4ade80] font-arcade text-sm italic">“A MESA NÃO PERDOA ERROS.”</div>
         </div>
     );
   }
 
   return (
-    <div className="h-full flex flex-col bg-[#0a0a0a]">
-      {/* Table Top View Representation */}
-      <div className="relative flex-1 flex flex-col p-4">
-        {/* Net / Separator */}
-        <div className="absolute inset-0 flex items-center justify-center opacity-10 pointer-events-none">
-            <div className="w-full h-1 bg-white"></div>
+    <div className="fixed inset-0 flex flex-col bg-[#0a0a0a] overflow-hidden">
+      
+      {/* HUD SUPERIOR - CONTROL BAR (REDUZIDO) */}
+      <div className="absolute top-0 left-0 right-0 z-50 flex items-center justify-between p-3 bg-gradient-to-b from-black/95 via-black/40 to-transparent">
+          <button 
+            onClick={resetMatch}
+            className="p-2 bg-zinc-900/60 backdrop-blur rounded-full text-zinc-500 border border-white/5 active:bg-red-900/40 transition-colors"
+          >
+            <XCircle size={20} />
+          </button>
+
+          <div className="flex-1 flex justify-center px-2">
+              {activeMatch.winner ? (
+                  <button 
+                    onClick={finishMatch}
+                    className="bg-[#4ade80] text-black px-5 py-2 rounded-full font-arcade text-[10px] shadow-[0_0_15px_rgba(74,222,128,0.4)] flex items-center gap-2 animate-king"
+                  >
+                    CONFIRMAR <Play size={10} fill="currentColor" />
+                  </button>
+              ) : (
+                  <div className="bg-zinc-900/80 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span>
+                      <span className="font-arcade text-[8px] text-zinc-400 tracking-widest uppercase">
+                          {activeMatch.mode} • BATALHA
+                      </span>
+                  </div>
+              )}
+          </div>
+
+          <button 
+            onClick={() => {
+                if(window.confirm("Reiniciar placar?")) {
+                    updateScore('A', -activeMatch.scoreA);
+                    updateScore('B', -activeMatch.scoreB);
+                }
+            }}
+            className="p-2 bg-zinc-900/60 backdrop-blur rounded-full text-zinc-500 border border-white/5 active:bg-yellow-900/40 transition-colors"
+          >
+            <RefreshCw size={20} />
+          </button>
+      </div>
+
+      {/* ÁREA PRINCIPAL DO COMBATE */}
+      <div className="relative flex-1 flex h-full">
+        {/* Vertical Net */}
+        <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-[1px] bg-white/5 z-0 flex flex-col justify-around py-20 opacity-30">
+             {[...Array(30)].map((_, i) => (
+                 <div key={i} className="w-0.5 h-0.5 bg-white/40 rounded-full"></div>
+             ))}
         </div>
 
-        {/* Side A */}
-        <div className={`flex-1 flex flex-col items-center justify-center p-4 rounded-3xl mb-2 transition-all duration-300 border-2 ${activeMatch.winner === 'A' ? 'bg-[#4ade8022] border-[#4ade80] glow-green' : 'bg-zinc-900/40 border-transparent'}`}>
-            <div className="flex flex-col items-center mb-4">
-              <div className="relative">
-                {players[activeMatch.sideA[0]].stats.consecutiveWins > 0 && (
-                   <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-yellow-500 animate-bounce">
-                     <Crown size={24} />
-                   </div>
-                )}
-                <div className="text-5xl mb-2">{pA.map(p => p.emoji).join(' ')}</div>
-              </div>
-              <h3 className="font-arcade text-lg leading-tight text-center">
-                {pA.map(p => p.name).join(' & ')}
-              </h3>
-              {players[activeMatch.sideA[0]].stats.consecutiveWins > 0 && (
-                <span className="text-[10px] bg-yellow-500 text-black font-bold px-2 py-0.5 rounded-full mt-1">
-                    🔥 {players[activeMatch.sideA[0]].stats.consecutiveWins} VITÓRIAS
-                </span>
-              )}
+        {/* LADO A (ESQUERDA) */}
+        <div className={`flex-1 flex flex-col items-center justify-between transition-all duration-500 relative z-10 ${activeMatch.winner === 'A' ? 'bg-[#4ade801a]' : 'bg-transparent'}`}>
+            {/* Info Topo */}
+            <div className="pt-16 flex flex-col items-center space-y-1">
+                <div className="relative">
+                    {pA[0].stats.consecutiveWins > 0 && (
+                        <div className="absolute -top-8 left-1/2 -translate-x-1/2 text-yellow-500 animate-king">
+                            <Crown size={24} />
+                        </div>
+                    )}
+                    <div className="text-5xl drop-shadow-md">{pA.map(p => p.emoji).join('')}</div>
+                </div>
+                <h3 className="font-arcade text-xs text-center text-white truncate max-w-[80px] uppercase">
+                    {pA.map(p => p.name).join(' & ')}
+                </h3>
             </div>
             
-            <div className="flex items-center gap-6">
-                <button 
-                  onClick={() => updateScore('A', -1)} 
-                  className="w-12 h-12 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-400 border border-zinc-700 active:scale-90"
-                >
-                    <Minus size={20} />
-                </button>
-                <div className={`font-arcade text-8xl transition-all ${activeMatch.winner === 'A' ? 'text-[#4ade80] scale-110' : 'text-white'}`}>
-                    {activeMatch.scoreA}
-                </div>
+            {/* Placar Gigante (VH based para nunca estourar) */}
+            <div className={`font-arcade text-[22vh] leading-none transition-all select-none pointer-events-none ${activeMatch.winner === 'A' ? 'text-[#4ade80] scale-110 drop-shadow-[0_0_20px_rgba(74,222,128,0.4)]' : 'text-zinc-100 opacity-90'}`}>
+                {activeMatch.scoreA}
+            </div>
+
+            {/* Controles Otimizados */}
+            <div className="w-full flex flex-col p-4 pb-6 space-y-3">
                 <button 
                   onClick={() => updateScore('A', 1)} 
-                  className="w-16 h-16 rounded-full bg-[#4ade80] flex items-center justify-center text-black shadow-lg border-2 border-white/20 active:scale-90"
+                  className="w-full h-32 bg-[#4ade80] text-black rounded-[2rem] shadow-xl flex items-center justify-center active:scale-95 transition-transform group"
                 >
-                    <Plus size={32} />
+                    <Plus size={50} className="group-active:scale-125 transition-transform" />
                 </button>
-            </div>
-        </div>
-
-        {/* Side B */}
-        <div className={`flex-1 flex flex-col items-center justify-center p-4 rounded-3xl transition-all duration-300 border-2 ${activeMatch.winner === 'B' ? 'bg-[#4ade8022] border-[#4ade80] glow-green' : 'bg-zinc-900/40 border-transparent'}`}>
-            <div className="flex items-center gap-6">
                 <button 
-                   onClick={() => updateScore('B', -1)} 
-                   className="w-12 h-12 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-400 border border-zinc-700 active:scale-90"
+                  onClick={() => updateScore('A', -1)} 
+                  className="w-full py-3 bg-zinc-900/60 backdrop-blur text-zinc-700 rounded-2xl border border-zinc-800 flex items-center justify-center active:scale-95"
                 >
                     <Minus size={20} />
                 </button>
-                <div className={`font-arcade text-8xl transition-all ${activeMatch.winner === 'B' ? 'text-[#4ade80] scale-110' : 'text-white'}`}>
-                    {activeMatch.scoreB}
+            </div>
+        </div>
+
+        {/* LADO B (DIREITA) */}
+        <div className={`flex-1 flex flex-col items-center justify-between transition-all duration-500 relative z-10 ${activeMatch.winner === 'B' ? 'bg-[#4ade801a]' : 'bg-transparent'}`}>
+            {/* Info Topo */}
+            <div className="pt-16 flex flex-col items-center space-y-1">
+                <div className="relative">
+                    {pB[0].stats.consecutiveWins > 0 && (
+                        <div className="absolute -top-8 left-1/2 -translate-x-1/2 text-yellow-500 animate-king">
+                            <Crown size={24} />
+                        </div>
+                    )}
+                    <div className="text-5xl drop-shadow-md">{pB.map(p => p.emoji).join('')}</div>
                 </div>
-                <button 
-                  onClick={() => updateScore('B', 1)} 
-                  className="w-16 h-16 rounded-full bg-[#4ade80] flex items-center justify-center text-black shadow-lg border-2 border-white/20 active:scale-90"
-                >
-                    <Plus size={32} />
-                </button>
+                <h3 className="font-arcade text-xs text-center text-white truncate max-w-[80px] uppercase">
+                    {pB.map(p => p.name).join(' & ')}
+                </h3>
             </div>
 
-            <div className="flex flex-col items-center mt-4">
-              <h3 className="font-arcade text-lg leading-tight text-center mb-2">
-                {pB.map(p => p.name).join(' & ')}
-              </h3>
-              <div className="text-5xl">{pB.map(p => p.emoji).join(' ')}</div>
+            {/* Placar Gigante */}
+            <div className={`font-arcade text-[22vh] leading-none transition-all select-none pointer-events-none ${activeMatch.winner === 'B' ? 'text-[#4ade80] scale-110 drop-shadow-[0_0_20px_rgba(74,222,128,0.4)]' : 'text-zinc-100 opacity-90'}`}>
+                {activeMatch.scoreB}
+            </div>
+
+            {/* Controles Otimizados */}
+            <div className="w-full flex flex-col p-4 pb-6 space-y-3">
+                <button 
+                  onClick={() => updateScore('B', 1)} 
+                  className="w-full h-32 bg-[#4ade80] text-black rounded-[2rem] shadow-xl flex items-center justify-center active:scale-95 transition-transform group"
+                >
+                    <Plus size={50} className="group-active:scale-125 transition-transform" />
+                </button>
+                <button 
+                  onClick={() => updateScore('B', -1)} 
+                  className="w-full py-3 bg-zinc-900/60 backdrop-blur text-zinc-700 rounded-2xl border border-zinc-800 flex items-center justify-center active:scale-95"
+                >
+                    <Minus size={20} />
+                </button>
             </div>
         </div>
       </div>
 
-      <div className="p-4 bg-[#1a1a1a] flex gap-3 border-t border-zinc-800">
-        <button 
-          onClick={resetMatch}
-          className="flex-1 bg-zinc-800 text-zinc-400 p-4 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-zinc-700 active:scale-95"
-        >
-          <RefreshCw size={18} /> CANCELAR
-        </button>
-        {activeMatch.winner && (
-          <button 
-            onClick={finishMatch}
-            className="flex-[2] bg-[#4ade80] text-black p-4 rounded-xl font-arcade text-lg shadow-lg flex items-center justify-center gap-2 animate-king"
-          >
-            FINALIZAR MESA <Play size={20} fill="currentColor" />
-          </button>
-        )}
-      </div>
-
+      {/* Overlays e Streaks (Reduzidos para não poluir) */}
       {activeMatch.isDeuce && (
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 bg-red-600 text-white font-arcade px-6 py-2 rounded-full shadow-2xl rotate-[-5deg]">
-              🔥 DESEMPATE! 2 DE VANTAGEM
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 bg-red-600 text-white font-arcade px-6 py-3 rounded-full shadow-[0_0_30px_rgba(220,38,38,0.7)] rotate-[-2deg] animate-bounce text-xs">
+              🔥 OVERTIME
           </div>
       )}
+
+      {/* Side Streaks (Bolinhas compactas) */}
+      <div className="absolute top-48 w-full flex justify-between px-2 pointer-events-none">
+          <div className="flex flex-col gap-1">
+             {pA[0].stats.consecutiveWins > 0 && [...Array(Math.min(pA[0].stats.consecutiveWins, 5))].map((_, i) => (
+                 <div key={i} className="w-1.5 h-1.5 bg-yellow-500 rounded-full shadow-sm"></div>
+             ))}
+          </div>
+          <div className="flex flex-col gap-1 items-end">
+             {pB[0].stats.consecutiveWins > 0 && [...Array(Math.min(pB[0].stats.consecutiveWins, 5))].map((_, i) => (
+                 <div key={i} className="w-1.5 h-1.5 bg-yellow-500 rounded-full shadow-sm"></div>
+             ))}
+          </div>
+      </div>
     </div>
   );
 };

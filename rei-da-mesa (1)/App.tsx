@@ -4,6 +4,7 @@ import { HashRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { Trophy, Users, ListOrdered, Settings, Play, Plus, Minus, UserPlus, Info, Zap, Crown, Swords, Ghost, Smile } from 'lucide-react';
 import { Player, Match, AppState, GameMode } from './types';
 import { EMOJIS, LEVELS, INITIAL_PLAYERS } from './constants';
+import { playArcadeSound } from './audio';
 
 // --- Views ---
 import GameView from './views/GameView';
@@ -11,7 +12,8 @@ import QueueView from './views/QueueView';
 import StatsView from './views/StatsView';
 import SettingsView from './views/SettingsView';
 
-const App: React.FC = () => {
+const AppContent: React.FC = () => {
+  const location = useLocation();
   const [state, setState] = useState<AppState>(() => {
     const saved = localStorage.getItem('rei-da-mesa-v1');
     if (saved) return JSON.parse(saved);
@@ -106,31 +108,49 @@ const App: React.FC = () => {
   const updateScore = (side: 'A' | 'B', amount: number) => {
     if (!state.activeMatch) return;
 
+    // Tocar som de ponto/erro
+    if (amount > 0) playArcadeSound('point');
+    else playArcadeSound('remove');
+
     setState(prev => {
       if (!prev.activeMatch) return prev;
       const match = { ...prev.activeMatch };
       const limit = match.mode === 'SOLO' ? 7 : 10;
       
+      const oldScoreA = match.scoreA;
+      const oldScoreB = match.scoreB;
+      const oldWinner = match.winner;
+      const oldDeuce = match.isDeuce;
+
       if (side === 'A') match.scoreA = Math.max(0, match.scoreA + amount);
       if (side === 'B') match.scoreB = Math.max(0, match.scoreB + amount);
 
-      if (match.mode === 'SOLO' && match.scoreA === 6 && match.scoreB === 6) {
+      // Lógica de Deuce (Empate técnico)
+      if (match.mode === 'SOLO' && match.scoreA === 6 && match.scoreB === 6 && !match.isDeuce) {
         match.isDeuce = true;
         match.scoreA = 0;
         match.scoreB = 0;
+        playArcadeSound('deuce');
       }
-      if (match.mode === 'DUPLAS' && match.scoreA === 9 && match.scoreB === 9) {
+      if (match.mode === 'DUPLAS' && match.scoreA === 9 && match.scoreB === 9 && !match.isDeuce) {
         match.isDeuce = true;
         match.scoreA = 0;
         match.scoreB = 0;
+        playArcadeSound('deuce');
       }
 
+      // Verificação de vencedor
       if (match.isDeuce) {
         if (match.scoreA >= 2 && match.scoreA - match.scoreB >= 2) match.winner = 'A';
         if (match.scoreB >= 2 && match.scoreB - match.scoreA >= 2) match.winner = 'B';
       } else {
         if (match.scoreA >= limit) match.winner = 'A';
         if (match.scoreB >= limit) match.winner = 'B';
+      }
+
+      // Se acabou de declarar um vencedor, toca som de vitória
+      if (match.winner && !oldWinner) {
+        playArcadeSound('victory');
       }
 
       return { ...prev, activeMatch: match };
@@ -150,6 +170,7 @@ const App: React.FC = () => {
 
       winnerSide.forEach(pid => {
         const p = updatedPlayers[pid];
+        if (!p) return;
         p.stats.matches++;
         p.stats.wins++;
         p.stats.consecutiveWins++;
@@ -164,6 +185,7 @@ const App: React.FC = () => {
 
       loserSide.forEach(pid => {
         const p = updatedPlayers[pid];
+        if (!p) return;
         p.stats.matches++;
         p.stats.losses++;
         p.stats.consecutiveWins = 0;
@@ -207,32 +229,44 @@ const App: React.FC = () => {
     setState(prev => ({ ...prev, activeMatch: null }));
   };
 
+  const isMatchActive = state.activeMatch !== null && location.pathname === '/';
+
   return (
-    <HashRouter>
-      <div className="flex flex-col min-h-screen">
+    <div className="flex flex-col min-h-screen">
+      {!isMatchActive && (
         <header className="bg-[#1a1a1a] p-4 flex justify-between items-center border-b border-[#333]">
           <h1 className="font-arcade text-2xl text-[#4ade80] tracking-tighter">REI DA MESA</h1>
           <div className="flex gap-4">
             <span className="text-xs bg-[#4ade80] text-black font-bold px-2 py-1 rounded">BETA</span>
           </div>
         </header>
+      )}
 
-        <main className="flex-1 overflow-y-auto pb-20">
-          <Routes>
-            <Route path="/" element={<GameView state={state} updateScore={updateScore} finishMatch={finishMatch} startMatch={startMatch} resetMatch={resetMatch} />} />
-            <Route path="/queue" element={<QueueView state={state} addPlayer={addPlayer} updatePlayer={updatePlayer} removePlayer={removePlayer} />} />
-            <Route path="/stats" element={<StatsView state={state} />} />
-            <Route path="/settings" element={<SettingsView state={state} setState={setState} />} />
-          </Routes>
-        </main>
+      <main className={`flex-1 overflow-y-auto ${!isMatchActive ? 'pb-20' : ''}`}>
+        <Routes>
+          <Route path="/" element={<GameView state={state} updateScore={updateScore} finishMatch={finishMatch} startMatch={startMatch} resetMatch={resetMatch} />} />
+          <Route path="/queue" element={<QueueView state={state} addPlayer={addPlayer} updatePlayer={updatePlayer} removePlayer={removePlayer} />} />
+          <Route path="/stats" element={<StatsView state={state} />} />
+          <Route path="/settings" element={<SettingsView state={state} setState={setState} />} />
+        </Routes>
+      </main>
 
+      {!isMatchActive && (
         <nav className="fixed bottom-0 left-0 right-0 bg-[#1a1a1a] border-t border-[#333] flex justify-around p-2 z-50">
           <NavLink to="/" icon={<Trophy size={20} />} label="Jogo" />
           <NavLink to="/queue" icon={<ListOrdered size={20} />} label="Fila" />
           <NavLink to="/stats" icon={<Users size={20} />} label="Mesa" />
           <NavLink to="/settings" icon={<Settings size={20} />} label="Ajustes" />
         </nav>
-      </div>
+      )}
+    </div>
+  );
+};
+
+const App: React.FC = () => {
+  return (
+    <HashRouter>
+      <AppContent />
     </HashRouter>
   );
 };

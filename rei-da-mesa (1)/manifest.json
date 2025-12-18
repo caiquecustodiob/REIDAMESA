@@ -1,0 +1,24 @@
+
+{
+  "name": "REI DA MESA",
+  "short_name": "ReiDaMesa",
+  "description": "Organizador de filas e placares de Ping Pong Arcade",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#0a0a0a",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/1041/1041168.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/1041/1041168.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
