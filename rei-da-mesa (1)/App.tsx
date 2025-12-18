@@ -15,6 +15,7 @@ import HighlightsOverlay from './views/HighlightsOverlay';
 
 const AppContent: React.FC = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [highlightPlayerId, setHighlightPlayerId] = useState<string | null>(null);
   
@@ -37,6 +38,22 @@ const AppContent: React.FC = () => {
       history: []
     };
   });
+
+  // Listener para importação externa (vinda do index.tsx / File Handler)
+  useEffect(() => {
+    const handleImport = (e: any) => {
+      const newState = e.detail;
+      if (newState && newState.players) {
+        if (window.confirm("Deseja carregar o arquivo externo? Isso substituirá seus dados atuais.")) {
+          setState(newState);
+          playArcadeSound('victory');
+          navigate('/settings');
+        }
+      }
+    };
+    window.addEventListener('rei-import-state', handleImport);
+    return () => window.removeEventListener('rei-import-state', handleImport);
+  }, [navigate]);
 
   useEffect(() => {
     localStorage.setItem('rei-da-mesa-v1.4', JSON.stringify(state));
@@ -103,7 +120,6 @@ const AppContent: React.FC = () => {
       if (side === 'A') match.scoreA = Math.max(0, match.scoreA + amount);
       if (side === 'B') match.scoreB = Math.max(0, match.scoreB + amount);
 
-      // Rastrear maior desvantagem
       const diffA = match.scoreB - match.scoreA;
       const diffB = match.scoreA - match.scoreB;
       match.maxTrailingA = Math.max(match.maxTrailingA || 0, diffA);
@@ -127,7 +143,6 @@ const AppContent: React.FC = () => {
       }
 
       if (match.winner && !oldWinner) {
-        // Checar se foi virada (estava perdendo por 2+)
         if (match.winner === 'A' && (match.maxTrailingA || 0) >= 2) match.isComeback = true;
         if (match.winner === 'B' && (match.maxTrailingB || 0) >= 2) match.isComeback = true;
         playArcadeSound('victory');

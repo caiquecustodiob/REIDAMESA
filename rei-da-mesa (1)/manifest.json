@@ -31,5 +31,14 @@
       "purpose": "any"
     }
   ],
-  "categories": ["sports", "utilities", "games"]
+  "categories": ["sports", "utilities", "games"],
+  "file_handlers": [
+    {
+      "action": "/",
+      "name": "Banco de Dados REI DA MESA",
+      "accept": {
+        "application/json": [".json"]
+      }
+    }
+  ]
 }
