@@ -39,8 +39,18 @@
             0%, 100% { opacity: 1; transform: scale(1); }
             50% { opacity: 0.8; transform: scale(1.05); }
         }
+        @keyframes progress-bar {
+            0% { width: 0%; }
+            100% { width: 100%; }
+        }
+        .animate-progress {
+            animation: progress-bar 5s linear infinite;
+        }
         .animate-king {
             animation: pulse-gold 2s infinite ease-in-out;
+        }
+        .perspective-1000 {
+            perspective: 1000px;
         }
         /* Custom scrollbar */
         ::-webkit-scrollbar {

@@ -6,6 +6,7 @@ export interface Player {
   name: string;
   emoji: string;
   level: Level;
+  active: boolean;
   stats: {
     matches: number;
     wins: number;
@@ -13,6 +14,8 @@ export interface Player {
     pointsScored: number;
     consecutiveWins: number;
     maxConsecutiveWins: number;
+    pneusApplied: number; // Vitórias por 5-0
+    pneusReceived: number; // Derrotas por 5-0
   };
   rivalries: {
     [playerId: string]: {
@@ -38,7 +41,7 @@ export interface Match {
 
 export interface AppState {
   players: Record<string, Player>;
-  queue: string[]; // Array of player IDs
+  queue: string[]; // IDs dos jogadores ativos na fila
   activeMatch: Match | null;
   history: Match[];
 }
